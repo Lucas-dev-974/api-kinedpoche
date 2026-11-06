@@ -30,11 +30,19 @@ interface ReportBugRequest {
 const BUG_SCREENSHOT_MIMES = new Set(["image/png", "image/jpeg", "image/jpg"]);
 
 class MailController extends Controller {
-    private transporter: Transporter;
+    private transporter: Transporter | null;
 
     constructor() {
         super();
-        this.transporter = this.initializeTransporter();
+        // Différé : le serveur démarre même sans configuration SMTP ; /api/mail/* renverra 503.
+        this.transporter = this.hasSmtpConfig() ? this.initializeTransporter() : null;
+        if (!this.transporter) {
+            logger.write("Mail", "SMTP non configuré (SMTP_HOST, SMTP_PORT, MAIL_USER, MAIL_PASS) — /api/mail/* renverra 503.");
+        }
+    }
+
+    private hasSmtpConfig(): boolean {
+        return !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.MAIL_USER && process.env.MAIL_PASS);
     }
 
     private initializeTransporter(): Transporter {
@@ -64,6 +72,11 @@ class MailController extends Controller {
             const validationResult = this.validateRequestSendContract(req);
             if (validationResult.error || !validationResult.data) {
                 res.status(400).json(validationResult.error);
+                return;
+            }
+
+            if (!this.transporter) {
+                res.status(503).json({ error: "Service e-mail non configuré (variables SMTP_* manquantes)" });
                 return;
             }
 
@@ -150,6 +163,10 @@ class MailController extends Controller {
                     })),
                 };
 
+                if (!this.transporter) {
+                    res.status(503).json({ error: "Service e-mail non configuré (variables SMTP_* manquantes)" });
+                    return;
+                }
                 await this.transporter.sendMail(mailOptions);
                 res.status(200).json({ message: "Signalement envoyé avec succès" });
             } catch (error) {
