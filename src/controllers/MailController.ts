@@ -45,6 +45,11 @@ class MailController extends Controller {
         return !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.MAIL_USER && process.env.MAIL_PASS);
     }
 
+    /** État du service e-mail, lisible par app.ts pour un log de boot honnête. */
+    get mailEnabled(): boolean {
+        return this.transporter !== null;
+    }
+
     private initializeTransporter(): Transporter {
         if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.MAIL_USER || !process.env.MAIL_PASS) {
             throw new Error("Variables d'environnement SMTP manquantes. Vérifiez SMTP_HOST, SMTP_PORT, MAIL_USER et MAIL_PASS.");

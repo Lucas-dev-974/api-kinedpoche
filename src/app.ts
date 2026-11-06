@@ -6,6 +6,7 @@ import { JWTMiddleware } from "./middleware/JWTMiddleware";
 import { AppDataSource } from "./dataSource";
 import { setRoutes } from "./routes/index";
 import { logger } from "./utils/Logger";
+import { mailController } from "./controllers/MailController";
 
 // Configuration des variables d'environnement
 dotenv.config();
@@ -95,13 +96,16 @@ class App {
       // Démarrage du serveur
       const port = AppConfig.getPort();
       this.app.listen(port, () => {
+        const mailLogMessage = mailController.mailEnabled
+          ? "Service d'envoi d'emails activé"
+          : "Service d'envoi d'emails non configuré — /api/mail/* renverra 503";
         logger.write("App", `Serveur démarré sur http://localhost:${port}\n`);
-        logger.write("App", "Service d'envoi d'emails activé\n");
+        logger.write("App", `${mailLogMessage}\n`);
         logger.write("App", "Gestion des fichiers configurée (max: 20MB)\n");
         // Afficher aussi dans la console pour le développement
         if (process.env.NODE_ENV !== 'production') {
           console.log(`🚀 Serveur démarré sur http://localhost:${port}`);
-          console.log(`📧 Service d'envoi d'emails activé`);
+          console.log(`📧 ${mailLogMessage}`);
           console.log(`📁 Gestion des fichiers configurée (max: 20MB)`);
         }
       });
