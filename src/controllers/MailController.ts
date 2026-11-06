@@ -86,13 +86,8 @@ class MailController extends Controller {
             }
 
             try {
-                const contractData = this.buildContractData(validationResult.data.contractData as string | undefined);
-                const { contract, created } = await this.createOrLoadContract(contractData);
-
-                if (!created && contract.token !== contractData?.token) {
-                    res.status(400).json({ error: "Vous n'êtes pas autorisé à envoyer cet e-mail" });
-                    return;
-                }
+                const { contractData, claimedToken } = this.buildContractData(validationResult.data.contractData as string | undefined);
+                const { contract, created } = await this.createOrLoadContract(contractData, claimedToken);
 
                 const mailOptions = this.prepareMailOptions(validationResult.data, contract.token, req.file);
                 const info = await this.transporter.sendMail(mailOptions);
@@ -221,13 +216,54 @@ class MailController extends Controller {
         return { data: validator.data as SendContractRequest };
     }
 
-    private buildContractData(rawContractData?: string): Partial<Contract> {
+    private buildContractData(rawContractData?: string): { contractData: Partial<Contract>; claimedToken?: string } {
         if (!rawContractData) {
             throw new Error("Données de contrat manquantes");
         }
 
         const parsedData: Partial<Contract> = JSON.parse(rawContractData);
-        const contractData: Partial<Contract> = { ...parsedData };
+
+        // Anti mass-assignment : whitelist explicite — le client ne décide
+        // jamais de `id`, `token`, `user` (relation) ni des colonnes système.
+        const ALLOWED_FIELDS: (keyof Contract)[] = [
+            "startDate",
+            "endDate",
+            "percentReturnToSubstitute",
+            "percentReturnToSubstituteBeforeDate",
+            "nonInstallationRadius",
+            "conciliationCDOMK",
+            "doneAtLocation",
+            "doneAt",
+            "replacedGender",
+            "replacedEmail",
+            "replacedName",
+            "replacedBirthday",
+            "replacedBirthdayLocation",
+            "replacedOrderDepartement",
+            "replacedOrderDepartmentNumber",
+            "replacedProfessionnalAddress",
+            "substituteGender",
+            "substituteEmail",
+            "substituteName",
+            "substituteBirthday",
+            "substituteBirthdayLocation",
+            "substituteOrderDepartement",
+            "substituteOrderDepartmentNumber",
+            "substituteAdress",
+            "replacedSignatureDataUrl",
+            "substituteSignatureDataUrl",
+        ];
+
+        const contractData: Partial<Contract> = {};
+        for (const field of ALLOWED_FIELDS) {
+            const value = (parsedData as any)[field];
+            if (value !== undefined) {
+                (contractData as any)[field] = value;
+            }
+        }
+
+        // Le token est consommé pour AUTHENTIFIER la requête, jamais persisté tel quel.
+        const claimedToken = typeof (parsedData as any).token === "string" ? (parsedData as any).token : undefined;
 
         const dateFields: (keyof Contract)[] = [
             "startDate",
@@ -280,22 +316,29 @@ class MailController extends Controller {
             }
         }
 
-        return contractData;
+        return { contractData, claimedToken };
     }
 
-    private async createOrLoadContract(contractData: Partial<Contract>): Promise<{ contract: Contract, created: boolean }> {
+    /**
+     * - Sans `id` : création pure, token généré SERVEUR après la sauvegarde
+     *   (dérivé de l'id réel — plus de collision entre contrats créés à la même seconde).
+     * - Avec `id` + token : chargement du contrat existant, token du client
+     *   vérifié contre la valeur en base (auth) — jamais réécrit.
+     */
+    private async createOrLoadContract(contractData: Partial<Contract>, claimedToken?: string): Promise<{ contract: Contract, created: boolean }> {
         const contractRepo = getRepo(Contract);
 
-        if (!contractData.id || !contractData.token) {
+        if (!contractData.id) {
             const contract = contractRepo.create({
-                token: jwt.sign({ contractId: contractData?.id }, process.env.JWT_PRIVATE as string),
                 isPublic: true,
                 ...contractData
             });
 
-            await contractRepo.save(contract);
+            const saved = await contractRepo.save(contract);
+            saved.token = jwt.sign({ contractId: saved.id }, process.env.JWT_PRIVATE as string);
+            const result = await contractRepo.save(saved);
 
-            return { contract: contract as Contract, created: true };
+            return { contract: result as Contract, created: true };
         }
 
         const existingContract = await contractRepo.findOne({ where: { id: contractData.id } });
@@ -304,12 +347,21 @@ class MailController extends Controller {
             throw new Error("Contrat introuvable");
         }
 
-        // Explicitly cast existingContract as Contract to satisfy type checker
+        if (!existingContract.token || existingContract.token !== claimedToken) {
+            throw new Error("Vous n'êtes pas autorisé à envoyer cet e-mail");
+        }
+
         return { contract: existingContract as Contract, created: false };
     }
 
     private prepareMailOptions(data: SendContractRequest, contractToken: string, file?: Express.Multer.File): SendMailOptions {
-        const signeBackLink = `http://${process.env.FRONTEND_URL}?signe-back=${contractToken}`;
+        // Lien du front : FRONTEND_URL en priorité, sinon première entrée de
+        // CORS_ORIGIN (elle contient déjà le schéma), sinon fallback de dev.
+        let frontBase = process.env.FRONTEND_URL || (process.env.CORS_ORIGIN || "").split(",")[0]?.trim() || "localhost:5173";
+        if (!/^https?:\/\//i.test(frontBase)) {
+            frontBase = `http://${frontBase}`;
+        }
+        const signeBackLink = `${frontBase}?signe-back=${contractToken}`;
 
         const mailOptions: SendMailOptions = {
             from: `"Kiné de poce" <${process.env.MAIL_USER}>`,
