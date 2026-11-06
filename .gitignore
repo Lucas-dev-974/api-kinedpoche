@@ -6,3 +6,4 @@ temp/
 build
 .env
 /logs/
+src/logs/
