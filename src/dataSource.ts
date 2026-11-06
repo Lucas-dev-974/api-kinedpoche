@@ -3,6 +3,7 @@ import { DataSource } from "typeorm";
 import { User } from "./database/entity/User";
 import { Contract } from "./database/entity/Contract";
 
+import path from "path";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -13,8 +14,10 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
-  synchronize: process.env.NODE_ENV !== 'production', // Désactiver en production
-  logging: process.env.NODE_ENV === 'development',
+  // Le schéma est porté par les migrations (migrationsRun auto au boot) — jamais de synchronize.
+  migrations: [path.join(__dirname, "./migrations/*{.ts,.js}")],
+  migrationsRun: true,
+  logging: process.env.NODE_ENV === "production" ? ["error", "migration"] : true,
   entities: [User, Contract],
 });
 
