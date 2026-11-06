@@ -70,6 +70,18 @@ class App {
   private setupMiddleware(): void {
     const corsOptions = AppConfig.createCorsOptions();
 
+    // Derrière un reverse-proxy en prod : utiliser X-Forwarded-For pour
+    // que le rate limiter key sur l'IP réelle du client.
+    this.app.set("trust proxy", 1);
+
+    // En-têtes de sécurité de base (léger, sans dépendance).
+    this.app.use((_req, res, next) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "DENY");
+      res.setHeader("Referrer-Policy", "no-referrer");
+      next();
+    });
+
     // Log de la configuration CORS pour le débogage
     const corsOrigin = process.env.CORS_ORIGIN || "*";
     logger.write("App", `Configuration CORS - CORS_ORIGIN: ${corsOrigin}\n`);
@@ -95,7 +107,7 @@ class App {
 
       // Démarrage du serveur
       const port = AppConfig.getPort();
-      this.app.listen(port, () => {
+      const server = this.app.listen(port, () => {
         const mailLogMessage = mailController.mailEnabled
           ? "Service d'envoi d'emails activé"
           : "Service d'envoi d'emails non configuré — /api/mail/* renverra 503";
@@ -109,6 +121,15 @@ class App {
           console.log(`📁 Gestion des fichiers configurée (max: 20MB)`);
         }
       });
+
+      // Arrêt gracieux (docker stop, déploie, Ctrl+C) : fermer les connexions.
+      const shutdown = (signal: string) => {
+        logger.write("App", `Arrêt gracieux (${signal})…\n`);
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(0), 5000).unref();
+      };
+      process.on("SIGTERM", () => shutdown("SIGTERM"));
+      process.on("SIGINT", () => shutdown("SIGINT"));
 
     } catch (error) {
       logger.write("App", logger.getContentErrorMessage(error));

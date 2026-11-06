@@ -3,7 +3,7 @@ import express, { Router } from "express";
 
 const AuthRouter: Router = express.Router();
 
-AuthRouter.use(express.json({ limit: "20mb" }));
+// Le parsing JSON est géré de façon centralisée dans routes/index.ts.
 AuthRouter.patch("/", authController.register);
 AuthRouter.post("/", authController.login);
 AuthRouter.get("/me", authController.me);

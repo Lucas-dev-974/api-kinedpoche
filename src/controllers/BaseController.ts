@@ -20,7 +20,7 @@ export interface ValidationResult {
 
 export abstract class Controller {
 
-    public isDevelopment: boolean = process.env.MODE !== 'production';
+    public isDevelopment: boolean = process.env.NODE_ENV !== 'production';
 
     constructor() { }
 

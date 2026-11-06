@@ -14,7 +14,7 @@ class AuthController extends Controller {
   registerValidationPattern: ValidationSchema = {
     email: { type: "email", required: true },
     fullname: { type: "string", required: true },
-    password: { type: "string", required: true },
+    password: { type: "string", required: true, minLength: 8 },
     birthday: { type: "date", required: true },
     bornLocation: { type: "string", required: true },
     department: { type: "string", required: true },
@@ -88,7 +88,7 @@ class AuthController extends Controller {
       return;
     }
 
-    const { email, password, fullname, birthday, bornLocation, department, orderNumber, personalAdress, officeAdress, status, phoneNumber, gender } = validationResult.data;
+    const { email, password, fullname, birthday, bornLocation, department, orderNumber, personalAdress, officeAdress, phoneNumber, gender } = validationResult.data;
     const userRepository = getRepo(User);
 
     try {
@@ -112,7 +112,6 @@ class AuthController extends Controller {
         orderNumber,
         personalAdress,
         officeAdress,
-        status,
         phoneNumber,
         gender,
       });
