@@ -40,10 +40,6 @@ export class User {
   @Column({ type: "enum", enum: ["male", "female"], nullable: true })
   gender: "male" | "female";
 
-  @Column({ default: false })
-  isPublic: boolean;
-
-
   @OneToMany(() => Contract, (contract) => contract.user)
   contracts: Contract[];
 }
