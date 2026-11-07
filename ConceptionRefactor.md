@@ -1,5 +1,14 @@
 # Analyse des Changements de Conception - Refactorisation
 
+> ⚠️ **Document HISTORIQUE (07/11/2026)** : plusieurs points décrits ici ont été
+> **corrigés depuis** par les audits et leurs remédiations — notamment le token
+> généré AVANT le `save()` (désormais généré après, avec l'id réel — cf. audit
+> sécurité C6 du 06/11), le champ `token` présent dans le schéma de validation
+> (retiré par le correctif C1), et le champ `contractAuth` du mailer (devenu
+> `contractData` avec whitelist). Ce document décrit l'INTENTION de l'époque ;
+> l'état réel du code fait foi : voir `AUDIT_SECURITE_LOGIQUE_BUGS_2026-11-06.md`
+> et `AUDIT_PROPRETE_STRUCTURE_2026-11-07.md`.
+
 ## Vue d'ensemble
 
 Cette refactorisation introduit un **système d'authentification basé sur les tokens pour les contrats**, permettant un accès public sécurisé aux contrats sans nécessiter d'authentification utilisateur complète. Cette approche transforme fondamentalement le modèle d'autorisation de l'application.
