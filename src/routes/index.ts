@@ -3,8 +3,10 @@ import express from "express";
 import AuthRouter from "./auth";
 import ContractRouter from "./contract";
 import MailRouter from "./mail";
-import { logger } from "../utils/Logger";
+import { Logger } from "../utils/Logger";
 import { authLimiter, contractLimiter } from "../middleware/rateLimit";
+
+const MAX_JSON_BODY_SIZE = "20mb";
 
 export function setRoutes(app: Application): void {
   // Healthcheck minimal — aucune configuration divulguée.
@@ -14,8 +16,8 @@ export function setRoutes(app: Application): void {
 
   app.use("/api/mail", MailRouter);
 
-  app.use("/api/auth", express.json({ limit: "20mb" }), authLimiter, AuthRouter);
-  app.use("/api/contract", express.json({ limit: "20mb" }), contractLimiter, ContractRouter);
+  app.use("/api/auth", express.json({ limit: MAX_JSON_BODY_SIZE }), authLimiter, AuthRouter);
+  app.use("/api/contract", express.json({ limit: MAX_JSON_BODY_SIZE }), contractLimiter, ContractRouter);
 
   // Gestion d'erreurs globale : réponses JSON propres (multer, body-parser,
   // contrôleurs), jamais de stack en production.
@@ -23,7 +25,7 @@ export function setRoutes(app: Application): void {
     if (process.env.NODE_ENV !== "production") {
       console.error("❌ Erreur non gérée :", err);
     }
-    logger.write("Errors", logger.getContentErrorMessage(err));
+    Logger.write("Errors", Logger.getContentErrorMessage(err));
 
     const status =
       typeof err?.status === "number"

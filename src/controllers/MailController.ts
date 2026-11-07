@@ -1,10 +1,11 @@
 import nodemailer, { Transporter, SendMailOptions } from "nodemailer";
 import { Request, Response } from "express";
 import { Controller } from "./BaseController";
-import { logger } from "../utils/Logger";
+import { Logger } from "../utils/Logger";
 import { getRepo } from "../dataSource";
 import { Contract } from "../database/entity/Contract";
-import jwt from "jsonwebtoken";
+import { CONTRACT_MUTABLE_FIELDS } from "./contractFields";
+import { UtilsAuthentication } from "../utils/auth.util";
 
 interface MailConfig {
     host: string;
@@ -37,7 +38,7 @@ class MailController extends Controller {
         // Différé : le serveur démarre même sans configuration SMTP ; /api/mail/* renverra 503.
         this.transporter = this.hasSmtpConfig() ? this.initializeTransporter() : null;
         if (!this.transporter) {
-            logger.write("Mail", "SMTP non configuré (SMTP_HOST, SMTP_PORT, MAIL_USER, MAIL_PASS) — /api/mail/* renverra 503.");
+            Logger.write("Mail", "SMTP non configuré (SMTP_HOST, SMTP_PORT, MAIL_USER, MAIL_PASS) — /api/mail/* renverra 503.");
         }
     }
 
@@ -99,7 +100,7 @@ class MailController extends Controller {
                     creatingContract: creatingContractResponse
                 });
             } catch (error) {
-                logger.write("Mail", logger.getContentErrorMessage(error));
+                Logger.write("Mail", Logger.getContentErrorMessage(error));
                 res.status(400).json({
                     error: "Erreur lors de l'envoi de l'e-mail",
                     ...(this.isDevelopment && { details: error instanceof Error ? error.message : 'Erreur inconnue' })
@@ -107,10 +108,8 @@ class MailController extends Controller {
                 return;
             }
         } catch (error) {
-            logger.write("Mail", logger.getContentErrorMessage(error));
-            res.status(500).json({
-                error: "Erreur interne du serveur",
-                ...(this.isDevelopment && { details: error instanceof Error ? error.message : 'Erreur inconnue' })
+            this.handleError(res, error, "Mail", "Erreur interne du serveur", {
+                detailsValue: (e) => e instanceof Error ? e.message : "Erreur inconnue",
             });
         }
     }
@@ -152,9 +151,9 @@ class MailController extends Controller {
 
             try {
                 const mailOptions: SendMailOptions = {
-                    from: `"Kiné de poce (bug report)" <${process.env.MAIL_USER}>`,
+                    from: `"Kiné de poche (bug report)" <${process.env.MAIL_USER}>`,
                     to,
-                    subject: "[Rempkiné] Signalement de bug",
+                    subject: "[Kiné de poche] Signalement de bug",
                     text: validationResult.data.reportContent,
                     attachments: files.map((file, index) => ({
                         filename: file.originalname || `capture-${index + 1}.png`,
@@ -170,17 +169,15 @@ class MailController extends Controller {
                 await this.transporter.sendMail(mailOptions);
                 res.status(200).json({ message: "Signalement envoyé avec succès" });
             } catch (error) {
-                logger.write("Mail", logger.getContentErrorMessage(error));
+                Logger.write("Mail", Logger.getContentErrorMessage(error));
                 res.status(400).json({
                     error: "Erreur lors de l'envoi du signalement",
                     ...(this.isDevelopment && { details: error instanceof Error ? error.message : "Erreur inconnue" }),
                 });
             }
         } catch (error) {
-            logger.write("Mail", logger.getContentErrorMessage(error));
-            res.status(500).json({
-                error: "Erreur interne du serveur",
-                ...(this.isDevelopment && { details: error instanceof Error ? error.message : "Erreur inconnue" }),
+            this.handleError(res, error, "Mail", "Erreur interne du serveur", {
+                detailsValue: (e) => e instanceof Error ? e.message : "Erreur inconnue",
             });
         }
     };
@@ -225,34 +222,7 @@ class MailController extends Controller {
 
         // Anti mass-assignment : whitelist explicite — le client ne décide
         // jamais de `id`, `token`, `user` (relation) ni des colonnes système.
-        const ALLOWED_FIELDS: (keyof Contract)[] = [
-            "startDate",
-            "endDate",
-            "percentReturnToSubstitute",
-            "percentReturnToSubstituteBeforeDate",
-            "nonInstallationRadius",
-            "conciliationCDOMK",
-            "doneAtLocation",
-            "doneAt",
-            "replacedGender",
-            "replacedEmail",
-            "replacedName",
-            "replacedBirthday",
-            "replacedBirthdayLocation",
-            "replacedOrderDepartement",
-            "replacedOrderDepartmentNumber",
-            "replacedProfessionnalAddress",
-            "substituteGender",
-            "substituteEmail",
-            "substituteName",
-            "substituteBirthday",
-            "substituteBirthdayLocation",
-            "substituteOrderDepartement",
-            "substituteOrderDepartmentNumber",
-            "substituteAdress",
-            "replacedSignatureDataUrl",
-            "substituteSignatureDataUrl",
-        ];
+        const ALLOWED_FIELDS = CONTRACT_MUTABLE_FIELDS;
 
         const contractData: Partial<Contract> = {};
         for (const field of ALLOWED_FIELDS) {
@@ -335,10 +305,10 @@ class MailController extends Controller {
             });
 
             const saved = await contractRepo.save(contract);
-            saved.token = jwt.sign({ contractId: saved.id }, process.env.JWT_PRIVATE as string);
+            saved.token = UtilsAuthentication.generateContractToken(saved.id);
             const result = await contractRepo.save(saved);
 
-            return { contract: result as Contract, created: true };
+            return { contract: result, created: true };
         }
 
         const existingContract = await contractRepo.findOne({ where: { id: contractData.id } });
@@ -351,7 +321,7 @@ class MailController extends Controller {
             throw new Error("Vous n'êtes pas autorisé à envoyer cet e-mail");
         }
 
-        return { contract: existingContract as Contract, created: false };
+        return { contract: existingContract, created: false };
     }
 
     private prepareMailOptions(data: SendContractRequest, contractToken: string, file?: Express.Multer.File): SendMailOptions {
@@ -364,7 +334,7 @@ class MailController extends Controller {
         const signeBackLink = `${frontBase}?signe-back=${contractToken}`;
 
         const mailOptions: SendMailOptions = {
-            from: `"Kiné de poce" <${process.env.MAIL_USER}>`,
+            from: `"Kiné de poche" <${process.env.MAIL_USER}>`,
             to: data.to,
             subject: "Vous avez reçu un contrat de remplacement",
             text: "Contrat de remplacement proposé. Vous trouverez le contrat en pièce jointe.\n\n" + (data.body || "") + "\n\nPour signer le contrat, cliquez sur le lien suivant : " + signeBackLink,
@@ -389,7 +359,7 @@ class MailController extends Controller {
 
     private logFileInfo(file: Express.Multer.File): void {
         if (process.env.NODE_ENV === 'development') {
-            logger.write("Mail", `File received: ${file.originalname}, Size: ${file.buffer?.length || 0} bytes, Type: ${file.mimetype}`);
+            Logger.write("Mail", `File received: ${file.originalname}, Size: ${file.buffer?.length || 0} bytes, Type: ${file.mimetype}`);
         }
     }
 

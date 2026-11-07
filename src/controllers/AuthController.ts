@@ -2,7 +2,6 @@ import { UtilsAuthentication } from "../utils/auth.util";
 import { User } from "../database/entity/User";
 import { Request, Response } from "express";
 import { getRepo } from "../dataSource";
-import { logger } from "../utils/Logger";
 import { Controller, ValidationSchema } from "./BaseController";
 
 class AuthController extends Controller {
@@ -65,18 +64,14 @@ class AuthController extends Controller {
         token,
       });
     } catch (error) {
-      const detailedError = {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-        code: (error as any).code || "UNKNOWN_ERROR",
-      };
-
-      logger.write("Authentication", logger.getContentErrorMessage(error));
-
-      res.status(500).send({
-        error: "Une erreur c'est produite, veuillez réesayer ultérieurement",
-        ...(this.isDevelopment && { detailedError }),
+      this.handleError(res, error, "Authentication", "Une erreur s'est produite, veuillez réessayer ultérieurement", {
+        detailsKey: "detailedError",
+        detailsValue: (e) => ({
+          message: (e as Error).message,
+          stack: (e as Error).stack,
+          name: (e as Error).name,
+          code: (e as any).code || "UNKNOWN_ERROR",
+        }),
       });
     }
   }
@@ -97,7 +92,7 @@ class AuthController extends Controller {
       if (existingUser) {
         res.status(400).send({
           error:
-            "Un compte avec l'addresse email que vous avez renseigner existe déjà, veuillez vous connecté.",
+            "L'adresse email que vous avez renseignée existe déjà, veuillez vous connecter.",
         });
         return;
       }
@@ -128,17 +123,14 @@ class AuthController extends Controller {
       });
       return;
     } catch (error) {
-      const detailedError = {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-        code: (error as any).code || "UNKNOWN_ERROR",
-      };
-      logger.write("Authentication", logger.getContentErrorMessage(error));
-
-      res.status(500).send({
-        error: "Une erreur c'est produite, veuillez réesayer ultérieurement",
-        ...(this.isDevelopment && { detailedError }),
+      this.handleError(res, error, "Authentication", "Une erreur s'est produite, veuillez réessayer ultérieurement", {
+        detailsKey: "detailedError",
+        detailsValue: (e) => ({
+          message: (e as Error).message,
+          stack: (e as Error).stack,
+          name: (e as Error).name,
+          code: (e as any).code || "UNKNOWN_ERROR",
+        }),
       });
       return;
     }
@@ -167,11 +159,9 @@ class AuthController extends Controller {
 
       res.status(200).send(userWithoutPassword);
     } catch (error) {
-      logger.write("Authentication", logger.getContentErrorMessage(error));
-
-      res.status(500).send({
-        error: "Une erreur s'est produite, veuillez réessayer ultérieurement",
-        ...(this.isDevelopment && { detailedError: { message: (error as Error).message } }),
+      this.handleError(res, error, "Authentication", "Une erreur s'est produite, veuillez réessayer ultérieurement", {
+        detailsKey: "detailedError",
+        detailsValue: (e) => ({ message: (e as Error).message }),
       });
     }
   }

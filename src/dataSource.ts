@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { DataSource } from "typeorm";
+import { DataSource, EntityTarget, ObjectLiteral, Repository } from "typeorm";
 import { User } from "./database/entity/User";
 import { Contract } from "./database/entity/Contract";
 
@@ -21,6 +21,6 @@ export const AppDataSource = new DataSource({
   entities: [User, Contract],
 });
 
-export function getRepo(entity: any) {
-  return AppDataSource.getRepository(entity);
+export function getRepo<T extends ObjectLiteral>(entity: EntityTarget<T>): Repository<T> {
+  return AppDataSource.getRepository<T>(entity);
 }

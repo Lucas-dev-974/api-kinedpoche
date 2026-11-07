@@ -5,7 +5,7 @@ import cors from "cors";
 import { JWTMiddleware } from "./middleware/JWTMiddleware";
 import { AppDataSource } from "./dataSource";
 import { setRoutes } from "./routes/index";
-import { logger } from "./utils/Logger";
+import { Logger } from "./utils/Logger";
 import { mailController } from "./controllers/MailController";
 
 // Configuration des variables d'environnement
@@ -61,6 +61,8 @@ class AppConfig {
 
 class App {
   private app: Application;
+  // Délai maximal d'arrêt gracieux avant arrêt forcé du process.
+  private static readonly GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5000;
 
   constructor() {
     this.app = express();
@@ -84,7 +86,7 @@ class App {
 
     // Log de la configuration CORS pour le débogage
     const corsOrigin = process.env.CORS_ORIGIN || "*";
-    logger.write("App", `Configuration CORS - CORS_ORIGIN: ${corsOrigin}\n`);
+    Logger.write("App", `Configuration CORS - CORS_ORIGIN: ${corsOrigin}\n`);
     if (process.env.NODE_ENV !== 'production') {
       console.log(`🔧 CORS Origin configuré: ${corsOrigin}`);
     }
@@ -100,7 +102,7 @@ class App {
     try {
       // Initialisation de la base de données
       await AppDataSource.initialize();
-      logger.write("App", "Base de données initialisée avec succès\n");
+      Logger.write("App", "Base de données initialisée avec succès\n");
 
       // Configuration des routes
       setRoutes(this.app);
@@ -111,9 +113,9 @@ class App {
         const mailLogMessage = mailController.mailEnabled
           ? "Service d'envoi d'emails activé"
           : "Service d'envoi d'emails non configuré — /api/mail/* renverra 503";
-        logger.write("App", `Serveur démarré sur http://localhost:${port}\n`);
-        logger.write("App", `${mailLogMessage}\n`);
-        logger.write("App", "Gestion des fichiers configurée (max: 20MB)\n");
+        Logger.write("App", `Serveur démarré sur http://localhost:${port}\n`);
+        Logger.write("App", `${mailLogMessage}\n`);
+        Logger.write("App", "Gestion des fichiers configurée (max: 20MB)\n");
         // Afficher aussi dans la console pour le développement
         if (process.env.NODE_ENV !== 'production') {
           console.log(`🚀 Serveur démarré sur http://localhost:${port}`);
@@ -124,15 +126,15 @@ class App {
 
       // Arrêt gracieux (docker stop, déploie, Ctrl+C) : fermer les connexions.
       const shutdown = (signal: string) => {
-        logger.write("App", `Arrêt gracieux (${signal})…\n`);
+        Logger.write("App", `Arrêt gracieux (${signal})…\n`);
         server.close(() => process.exit(0));
-        setTimeout(() => process.exit(0), 5000).unref();
+        setTimeout(() => process.exit(0), App.GRACEFUL_SHUTDOWN_TIMEOUT_MS).unref();
       };
       process.on("SIGTERM", () => shutdown("SIGTERM"));
       process.on("SIGINT", () => shutdown("SIGINT"));
 
     } catch (error) {
-      logger.write("App", logger.getContentErrorMessage(error));
+      Logger.write("App", Logger.getContentErrorMessage(error));
       console.error("❌ Erreur lors du démarrage de l'application:", error);
       process.exit(1);
     }

@@ -18,11 +18,38 @@ export interface ValidationResult {
     data?: any;
 }
 
+import { Response } from "express";
+import { Logger } from "../utils/Logger";
+
 export abstract class Controller {
 
     public isDevelopment: boolean = process.env.NODE_ENV !== 'production';
 
     constructor() { }
+
+    /**
+     * Bloc d'erreur 500 factorisé : log systématique + réponse JSON dont les
+     * détails ne sont inclus qu'en développement. `detailsValue` (différé)
+     * n'est construit qu'en dev — plus de `detailedError` assemblé hors dev.
+     */
+    protected handleError(
+        res: Response,
+        error: unknown,
+        context: string,
+        message: string,
+        options?: {
+            detailsKey?: string;
+            detailsValue?: (error: unknown) => unknown;
+        }
+    ): void {
+        Logger.write(context, Logger.getContentErrorMessage(error));
+        const detailsKey = options?.detailsKey ?? "details";
+        const detailsValue = options?.detailsValue ? options.detailsValue(error) : (error as Error).message;
+        res.status(500).json({
+            error: message,
+            ...(this.isDevelopment && { [detailsKey]: detailsValue }),
+        });
+    }
 
     public validators(data: any, schema: ValidationSchema): ValidationResult {
         const errors: string[] = [];
@@ -268,24 +295,5 @@ export abstract class Controller {
             }
         }
         return sanitized;
-    }
-
-    // Méthode utilitaire pour créer un schéma de validation rapidement
-    public createSchema(schemaDefinition: { [key: string]: Partial<ValidationRule> }): ValidationSchema {
-        const schema: ValidationSchema = {};
-
-        for (const [fieldName, rule] of Object.entries(schemaDefinition)) {
-            schema[fieldName] = {
-                type: rule.type || 'string',
-                required: rule.required !== undefined ? rule.required : true,
-                minLength: rule.minLength,
-                maxLength: rule.maxLength,
-                pattern: rule.pattern,
-                values: rule.values,
-                custom: rule.custom
-            };
-        }
-
-        return schema;
     }
 }

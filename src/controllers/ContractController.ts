@@ -1,36 +1,11 @@
 import { Controller, ValidationSchema } from "./BaseController";
-import { Request, Response } from "express-serve-static-core";
+import { Request, Response } from "express";
 import { Contract } from "../database/entity/Contract";
 import { User } from "../database/entity/User";
 import { getRepo } from "../dataSource";
-import { DeepPartial, Like, Repository } from "typeorm";
-import { logger } from "../utils/Logger";
-import jwt from "jsonwebtoken";
-
-/**
- * Champs que le patient (possesseur du token du lien email) a le droit de modifier.
- * Les champs du kiné remplaçé, le token du contrat et la relation user
- * ne sont NEVER éditables via le flux patient.
- */
-const PATIENT_MUTABLE_FIELDS: (keyof Contract)[] = [
-  "startDate",
-  "endDate",
-  "percentReturnToSubstitute",
-  "percentReturnToSubstituteBeforeDate",
-  "nonInstallationRadius",
-  "conciliationCDOMK",
-  "doneAtLocation",
-  "doneAt",
-  "substituteGender",
-  "substituteEmail",
-  "substituteName",
-  "substituteBirthday",
-  "substituteBirthdayLocation",
-  "substituteOrderDepartement",
-  "substituteOrderDepartmentNumber",
-  "substituteAdress",
-  "substituteSignatureDataUrl",
-];
+import { Like } from "typeorm";
+import { UtilsAuthentication } from "../utils/auth.util";
+import { PATIENT_MUTABLE_FIELDS } from "./contractFields";
 
 class ContractController extends Controller {
   /**
@@ -88,10 +63,7 @@ class ContractController extends Controller {
     return patch;
   }
 
-  /** Génère le token APRÈS la sauvegarde, avec l'id réel de la ligne. */
-  private generateContractToken = (contract: Contract) => {
-    return jwt.sign({ contractId: contract.id }, process.env.JWT_PRIVATE as string);
-  }
+  /** Le token du contrat est généré après la sauvegarde, avec l'id réel de la ligne (cf. UtilsAuthentication). */
 
   public async list(req: Request, res: Response) {
     try {
@@ -107,11 +79,7 @@ class ContractController extends Controller {
 
       res.status(200).json(user.contracts || []);
     } catch (error) {
-      logger.write("Contract", logger.getContentErrorMessage(error));
-      res.status(500).json({
-        error: "Erreur lors de la récupération des contrats.",
-        ...(this.isDevelopment && { details: (error as Error).message })
-      });
+      this.handleError(res, error, "Contract", "Erreur lors de la récupération des contrats.");
     }
   }
 
@@ -148,13 +116,11 @@ class ContractController extends Controller {
         Object.keys(this.contractValidationPattern) as (keyof Contract)[]
       );
 
-      // getRepo() est typé Repository<ObjectLiteral> (paramètre `any` côté dataSource) :
-      // on force le typage Contract pour que create()/save() soient corrects.
-      const contractRepo = getRepo(Contract) as unknown as Repository<Contract>;
-      const contract = contractRepo.create(contractData as unknown as DeepPartial<Contract>);
+      const contractRepo = getRepo(Contract);
+      const contract = contractRepo.create(contractData);
 
       if (res.locals.user) {
-        const userRepository = getRepo(User) as unknown as Repository<User>;
+        const userRepository = getRepo(User);
         const user = await userRepository.findOneBy({ id: res.locals.user.id });
         if (!user) {
           return res.status(401).json({ error: "Token invalide, veuillez vous reconnecter." });
@@ -164,16 +130,12 @@ class ContractController extends Controller {
 
       const saved = await contractRepo.save(contract);
       // Token dérivé de l'id réel : plus de collision entre contrats créés à la même seconde.
-      saved.token = this.generateContractToken(saved);
+      saved.token = UtilsAuthentication.generateContractToken(saved.id);
       const result = await contractRepo.save(saved);
 
       res.status(201).json(result);
     } catch (error) {
-      logger.write("Contract", logger.getContentErrorMessage(error));
-      res.status(500).json({
-        error: "Erreur lors de la création du contrat.",
-        ...(this.isDevelopment && { details: (error as Error).message })
-      });
+      this.handleError(res, error, "Contract", "Erreur lors de la création du contrat.");
     }
   }
 
@@ -200,7 +162,7 @@ class ContractController extends Controller {
         return;
       }
 
-      const contractRepo = getRepo(Contract) as unknown as Repository<Contract>;
+      const contractRepo = getRepo(Contract);
       const contract = await contractRepo.findOne({
         where: { id: contractId }
       });
@@ -242,11 +204,7 @@ class ContractController extends Controller {
 
       res.status(200).json(updatedContract);
     } catch (error) {
-      logger.write("Contract", logger.getContentErrorMessage(error));
-      res.status(500).json({
-        error: "Erreur lors de la mise à jour du contrat.",
-        ...(this.isDevelopment && { details: (error as Error).message })
-      });
+      this.handleError(res, error, "Contract", "Erreur lors de la mise à jour du contrat.");
     }
   }
 
@@ -285,11 +243,7 @@ class ContractController extends Controller {
       await getRepo(Contract).remove(contract);
       res.status(200).json({ message: "Contrat supprimé avec succès." });
     } catch (error) {
-      logger.write("Contract", logger.getContentErrorMessage(error));
-      res.status(500).json({
-        error: "Erreur lors de la suppression du contrat.",
-        ...(this.isDevelopment && { details: (error as Error).message })
-      });
+      this.handleError(res, error, "Contract", "Erreur lors de la suppression du contrat.");
     }
   }
 
@@ -330,11 +284,7 @@ class ContractController extends Controller {
 
       res.status(200).json(contracts);
     } catch (error) {
-      logger.write("Contract", logger.getContentErrorMessage(error));
-      res.status(500).json({
-        error: "Erreur lors de la recherche de contrats.",
-        ...(this.isDevelopment && { details: (error as Error).message })
-      });
+      this.handleError(res, error, "Contract", "Erreur lors de la recherche de contrats.");
     }
   }
 
@@ -368,17 +318,13 @@ class ContractController extends Controller {
 
         const contract = await getRepo(Contract).findOne({ where: { id: contractId } });
         if (contract && String(contract.token) === String(rawToken)) {
-          contracts.push(contract as Contract);
+          contracts.push(contract);
         }
       }
 
       return res.status(200).json(contracts);
     } catch (error) {
-      logger.write("Contract", logger.getContentErrorMessage(error));
-      return res.status(500).json({
-        error: "Erreur lors de la récupération des contrats.",
-        ...(this.isDevelopment && { details: (error as Error).message })
-      });
+      return this.handleError(res, error, "Contract", "Erreur lors de la récupération des contrats.");
     }
   }
 
@@ -391,11 +337,7 @@ class ContractController extends Controller {
       }
       return res.status(200).json(contract);
     } catch (error) {
-      logger.write("Contract", logger.getContentErrorMessage(error));
-      res.status(500).json({
-        error: "Erreur lors de la récupération du contrat.",
-        ...(this.isDevelopment && { details: (error as Error).message })
-      });
+      this.handleError(res, error, "Contract", "Erreur lors de la récupération du contrat.");
     }
   }
 

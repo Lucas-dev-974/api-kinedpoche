@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 
-export class logger {
+export class Logger {
   static write(filename: string, content: string) {
     const logsDir = path.join(__dirname, "../logs");
 
@@ -11,7 +11,11 @@ export class logger {
     }
 
     const logFilePath = path.join(logsDir, `${filename}.log`);
-    fs.appendFileSync(logFilePath, content, { encoding: "utf8" });
+    // Écriture asynchrone : ne bloque jamais l'event loop. Un échec d'écriture
+    // est tracé en console mais ne doit jamais faire crasher le serveur.
+    fs.promises.appendFile(logFilePath, content, { encoding: "utf8" }).catch((err) => {
+      console.error(`Échec d'écriture du log ${logFilePath} :`, err);
+    });
   }
 
   static getContentErrorMessage(error: any) {

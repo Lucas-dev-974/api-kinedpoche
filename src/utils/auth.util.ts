@@ -11,11 +11,12 @@ export type UserTokenInformationType = {
 };
 
 export class UtilsAuthentication {
-  static saltRound = 10;
+  static readonly SALT_ROUNDS = 10;
+  static readonly TOKEN_EXPIRES_IN = "30d";
   static secret = process.env.JWT_PRIVATE as string;
 
   static async hash(password: string) {
-    return await bcrypt.hash(password, this.saltRound);
+    return await bcrypt.hash(password, this.SALT_ROUNDS);
   }
 
   static async check(password: string, hashedPassword: string) {
@@ -23,7 +24,16 @@ export class UtilsAuthentication {
   }
 
   static generateToken(user: UserTokenInformationType) {
-    return jwt.sign(user, this.secret, { expiresIn: "30d" });
+    return jwt.sign(user, this.secret, { expiresIn: this.TOKEN_EXPIRES_IN });
+  }
+
+  /**
+   * Token d'autorisation d'un contrat (lien e-mail patient). Généré SERVEUR
+   * après la sauvegarde, dérivé de l'id réel de la ligne — jamais réécrit par
+   * le client. `JWT_PRIVATE` n'est lu qu'ici, via `this.secret`.
+   */
+  static generateContractToken(contractId: number) {
+    return jwt.sign({ contractId }, this.secret);
   }
 
   static checkToken(token: string) {
